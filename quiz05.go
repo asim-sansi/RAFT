@@ -315,22 +315,29 @@ func (n *Node) handleConnection(c net.Conn) {
 		if dataPacket.Term > n.Term { //not becoming follower, why ?
 			//updating term
 			n.Term = dataPacket.Term
-			//constructing vote message
-			n.LeaderPort = "pending"
-			replyPort := dataPacket.Port
-			dataPacket.Request = []string{"VOTED"}
-			dataPacket.Name = n.Name
-			dataPacket.Server = n.Server
-			dataPacket.Port = n.Port
-			dataPacket.Term = n.Term
-			//sending vote message
-			var byteSack bytes.Buffer
-			enc := gob.NewEncoder(&byteSack)
-			_ = enc.Encode(dataPacket)
-			c = n.ConnnectToNode(replyPort)
-			c.Write(byteSack.Bytes())
-			c.Close()
-			fmt.Println("Vote Casted")
+			n.MyRole = Follower
+		}
+		if dataPacket.Term == n.Term {
+			lastLogIndex, lastLogTerm := n.lastLogIndexAndTerm()
+			if n.LeaderPort != "pending" || (dataPacket.LastLogTerm > lastLogTerm ||
+				(dataPacket.LastLogTerm == lastLogTerm && dataPacket.LastLogIndex >= lastLogIndex)) {
+				//constructing vote message
+				n.LeaderPort = "pending"
+				replyPort := dataPacket.Port
+				dataPacket.Request = []string{"VOTED"}
+				dataPacket.Name = n.Name
+				dataPacket.Server = n.Server
+				dataPacket.Port = n.Port
+				dataPacket.Term = n.Term
+				//sending vote message
+				var byteSack bytes.Buffer
+				enc := gob.NewEncoder(&byteSack)
+				_ = enc.Encode(dataPacket)
+				c = n.ConnnectToNode(replyPort)
+				c.Write(byteSack.Bytes())
+				c.Close()
+				fmt.Println("Vote Casted")
+			}
 		}
 	} else if dataPacket.Request[0] == "VOTED" && n.MyRole == Candidate { //received by Candidate
 		fmt.Println("Vote Received")
