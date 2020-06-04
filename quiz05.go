@@ -228,6 +228,7 @@ func (n *Node) handleConnection(c net.Conn) {
 	}
 	if dataPacket.Request[0] == "PING" {
 		mychannel <- "Response Recieved"
+
 		fmt.Println("Ping from " + dataPacket.Name + " [" + dataPacket.Server + ":" + dataPacket.Port + "]")
 		//case where leader of new term pings or leader port is not set
 		if dataPacket.Term > n.Term || n.LeaderPort == "xxxx" || n.LeaderPort == "pending" {
@@ -240,15 +241,50 @@ func (n *Node) handleConnection(c net.Conn) {
 			fmt.Println("Not responding because PING is not from True Leader")
 			return
 		}
+		// Response To PING regarding the Log Entries [False By Default will become true if consistency check is valid]
+		dataPacket.Request = []string{"PONG", "FALSE"}
+
+		if dataPacket.PrevLogIndex == -1 ||
+			(dataPacket.PrevLogIndex < len(n.Log) && dataPacket.PrevLogTerm == n.Log[dataPacket.PrevLogIndex].Term) {
+			dataPacket.Request = []string{"PONG", "TRUE"}
+
+			logInsertIndex := dataPacket.PrevLogIndex + 1
+			newEntriesIndex := 0
+
+			for {
+				if logInsertIndex >= len(n.Log) || newEntriesIndex >= len(dataPacket.Entries) {
+					break
+				}
+				if n.Log[logInsertIndex].Term != dataPacket.Entries[newEntriesIndex].Term {
+					break
+				}
+				logInsertIndex++
+				newEntriesIndex++
+			}
+			// At the end of this loop:
+			// - logInsertIndex points at the end of the log, or an index where the
+			//   term mismatches with an entry from the leader
+			// - newEntriesIndex points at the end of Entries, or an index where the
+			//   term mismatches with the corresponding log entry
+			if newEntriesIndex < len(dataPacket.Entries) {
+				fmt.Println("... inserting entries %v from index %d", dataPacket.Entries[newEntriesIndex:], logInsertIndex)
+				n.Log = append(n.Log[:logInsertIndex], dataPacket.Entries[newEntriesIndex:]...)
+				fmt.Println("... log is now: %v", n.Log)
+			}
+			// Set commit index.
+			if dataPacket.LeaderCommit > n.CommitIndex {
+				n.CommitIndex = Min(dataPacket.LeaderCommit, len(n.Log)-1)
+				fmt.Println("... setting commitIndex = %d", n.CommitIndex)
+			}
+		}
+
 		//constructing pong message
 		pongPort := dataPacket.Port
 		pongName := dataPacket.Name
-		dataPacket.Request = []string{"PONG"}
 		dataPacket.Name = n.Name
 		dataPacket.Server = n.Server
 		dataPacket.Port = n.Port
 		dataPacket.Term = n.Term
-
 		//sending pong message
 		var byteSack bytes.Buffer
 		enc := gob.NewEncoder(&byteSack)
@@ -260,6 +296,13 @@ func (n *Node) handleConnection(c net.Conn) {
 		return
 	} else if dataPacket.Request[0] == "PONG" { //leader receives this
 		fmt.Println("Reply from " + dataPacket.Name + " [I AM ALIVE]")
+		//If logs were inconsistent
+		if n.MyRole == Leader && n.Term == dataPacket.Term {
+			if dataPacket.Request[1] == "TRUE" {
+				// Update NextIndex && MatchIndex here
+
+			}
+		}
 	} else if dataPacket.Request[0] == "VOTE" { //sent by Candidate Node
 		if dataPacket.Term > n.Term {
 			//updating term
@@ -364,6 +407,13 @@ func (n *Node) SendHeartBeat() {
 		}(n.Myconnections[i])
 
 	}
+}
+
+func Min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func getBoolResponse() bool {
