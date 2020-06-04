@@ -51,7 +51,7 @@ type Node struct {
 	Term          int             //current term
 	Votes         map[string]bool //a list of votes received
 	Log           []LogEntry      //Log entries to store (empty for heartbeat; may send more than one for efficiency)
-	CommitIndex   int             //index of highest log entry known to be committed (initialized to 0, increasesmonotonically)
+	CommitIndex   int             //index of highest log entry known to be committed (initialized to 0, increases monotonically)
 	LastApplied   int             //index of highest log entry applied to state machine (initialized to 0, increases monotonically)
 
 	//Only for Leaders
@@ -71,7 +71,7 @@ type Protocol struct {
 	LastLogIndex int
 	LastLogTerm  int
 
-	PrevLogIndex int        //index of log entry immediately preceding new ones
+	PrevLogIndex int        //index of log entry immediately preceding new ones for each server
 	LeaderCommit int        //Leaser's commit index
 	PrevLogTerm  int        //term of prevLogIndex entry
 	Entries      []LogEntry //Log entries to store (empty for heartbeat; may send more than one for efficiency)
@@ -234,8 +234,6 @@ func (n *Node) handleConnection(c net.Conn) {
 		return
 	}
 	if dataPacket.Request[0] == "PING" {
-		mychannel <- "Response Recieved"
-
 		fmt.Println("Ping from " + dataPacket.Name + " [" + dataPacket.Server + ":" + dataPacket.Port + "]")
 		//case where leader of new term pings or leader port is not set
 		if dataPacket.Term > n.Term || n.LeaderPort == "xxxx" || n.LeaderPort == "pending" {
@@ -284,7 +282,6 @@ func (n *Node) handleConnection(c net.Conn) {
 				fmt.Println("... setting commitIndex = %d", n.CommitIndex)
 			}
 		}
-
 		//constructing pong message
 		pongPort := dataPacket.Port
 		pongName := dataPacket.Name
@@ -300,19 +297,42 @@ func (n *Node) handleConnection(c net.Conn) {
 		c.Write(byteSack.Bytes())
 		c.Close()
 		fmt.Println("Pinged back to " + pongName + " [True Leader for Term " + strconv.Itoa(n.Term) + "]")
+		mychannel <- "Response Recieved"
 		return
 	} else if dataPacket.Request[0] == "PONG" { //leader receives this
 		fmt.Println("Reply from " + dataPacket.Name + " [I AM ALIVE]")
-		//If logs were inconsistent
+		//If logs were consistent
 		if n.MyRole == Leader && n.Term == dataPacket.Term {
 			if dataPacket.Request[1] == "TRUE" {
 				// Update NextIndex && MatchIndex here
+				n.NextIndex[dataPacket.Port] = n.NextIndex[dataPacket.Port] + len(dataPacket.Entries)
+				n.MatchIndex[dataPacket.Port] = n.NextIndex[dataPacket.Port] - 1
+				fmt.Println("logs were consistent, updated successfully at server " + dataPacket.Name)
 
+				// Find's if majority have replicated upto a certain index from log and updates CommitIndex
+				for i := n.CommitIndex + 1; i < len(n.Log); i++ {
+					if n.Log[i].Term == n.Term {
+						matchCount := 1
+						for _, peerId := range n.Myconnections {
+							if n.MatchIndex[peerId] >= i {
+								matchCount++
+							}
+						}
+						if matchCount*2 > len(n.Myconnections)+1 {
+							n.CommitIndex = i
+						}
+					}
+				}
+				fmt.Println("leader sets commitIndex := %d", n.CommitIndex)
+
+			} else if dataPacket.Request[1] == "FALSE" {
+				n.NextIndex[dataPacket.Port] = n.NextIndex[dataPacket.Port] - 1
+				fmt.Println("logs were inconsistent at server " + dataPacket.Name)
 			}
 		}
 	} else if dataPacket.Request[0] == "VOTE" { //sent by Candidate Node
 
-		if dataPacket.Term > n.Term { //not becoming follower, why ?
+		if dataPacket.Term > n.Term {
 			//updating term
 			n.Term = dataPacket.Term
 			n.MyRole = Follower
