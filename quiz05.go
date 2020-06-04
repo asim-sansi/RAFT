@@ -122,6 +122,7 @@ func (n *Node) NodeExecute() {
 			fmt.Println("I am Candidate " + n.Name + " Now")
 			//candidate node automatically updates its term
 			n.Term++
+			n.WriteCurrentTermToLog()
 			//node intializes vote map for collection of votes
 			n.Votes = make(map[string]bool)
 			//giving vote to self
@@ -228,17 +229,22 @@ func (n *Node) handleConnection(c net.Conn) {
 		}
 		c.Write([]byte("Log Updated, Wait For Sync & Response"))
 		n.Log = append(n.Log, LogEntry{Term: n.Term, Operation: dataPacket.Operation, Value: dataPacket.Value})
+		fmt.Print("** Current Log is -> ")
+		fmt.Println(n.Log)
 		return
 	}
 	if dataPacket.Term < n.Term {
 		return
 	}
 	if dataPacket.Request[0] == "PING" {
+		mychannel <- "Response Recieved"
 		fmt.Println("Ping from " + dataPacket.Name + " [" + dataPacket.Server + ":" + dataPacket.Port + "]")
 		//case where leader of new term pings or leader port is not set
 		if dataPacket.Term > n.Term || n.LeaderPort == "xxxx" || n.LeaderPort == "pending" {
 			//term, leader port, and role reset
 			n.Term = dataPacket.Term
+			n.WriteCurrentTermToLog()
+
 			n.LeaderPort = dataPacket.Port
 			n.MyRole = Follower
 		} else if dataPacket.Term == n.Term && dataPacket.Port != n.LeaderPort {
@@ -272,14 +278,28 @@ func (n *Node) handleConnection(c net.Conn) {
 			// - newEntriesIndex points at the end of Entries, or an index where the
 			//   term mismatches with the corresponding log entry
 			if newEntriesIndex < len(dataPacket.Entries) {
-				fmt.Println("... inserting entries %v from index %d", dataPacket.Entries[newEntriesIndex:], logInsertIndex)
+				fmt.Print("*** inserting entries from index " + strconv.Itoa(logInsertIndex))
+				fmt.Println(dataPacket.Entries[newEntriesIndex:])
+				// Writing Log Entries in Log File
+				//Append Log To Log File
+				file, err := os.OpenFile("../logs/log"+n.Name+".txt", os.O_APPEND|os.O_WRONLY, 0644)
+				if err != nil {
+					log.Println(err)
+				}
+				defer file.Close()
+				for _, entry := range dataPacket.Entries[newEntriesIndex:] {
+					if _, err := file.WriteString(strconv.Itoa(entry.Term) + " " + entry.Operation + " " + strconv.Itoa(entry.Value) + "\n"); err != nil {
+						log.Fatal(err)
+					}
+				}
 				n.Log = append(n.Log[:logInsertIndex], dataPacket.Entries[newEntriesIndex:]...)
-				fmt.Println("... log is now: %v", n.Log)
+				fmt.Print("*** Current log -> ")
+				fmt.Println(n.Log)
 			}
 			// Set commit index.
 			if dataPacket.LeaderCommit > n.CommitIndex {
 				n.CommitIndex = Min(dataPacket.LeaderCommit, len(n.Log)-1)
-				fmt.Println("... setting commitIndex = %d", n.CommitIndex)
+				fmt.Println("*** setting CommitIndex = " + strconv.Itoa(n.CommitIndex))
 			}
 		}
 		//constructing pong message
@@ -297,7 +317,6 @@ func (n *Node) handleConnection(c net.Conn) {
 		c.Write(byteSack.Bytes())
 		c.Close()
 		fmt.Println("Pinged back to " + pongName + " [True Leader for Term " + strconv.Itoa(n.Term) + "]")
-		mychannel <- "Response Recieved"
 		return
 	} else if dataPacket.Request[0] == "PONG" { //leader receives this
 		fmt.Println("Reply from " + dataPacket.Name + " [I AM ALIVE]")
@@ -323,7 +342,8 @@ func (n *Node) handleConnection(c net.Conn) {
 						}
 					}
 				}
-				fmt.Println("leader sets commitIndex := %d", n.CommitIndex)
+				fmt.Print("leader sets commitIndex = ")
+				fmt.Println(n.CommitIndex)
 
 			} else if dataPacket.Request[1] == "FALSE" {
 				n.NextIndex[dataPacket.Port] = n.NextIndex[dataPacket.Port] - 1
@@ -337,10 +357,10 @@ func (n *Node) handleConnection(c net.Conn) {
 		//	n.Term = dataPacket.Term
 		//	n.MyRole = Follower
 		//}
-		if dataPacket.Term >= n.Term {
+		if dataPacket.Term > n.Term {
 			//updating term
 			n.Term = dataPacket.Term
-			n.MyRole = Follower
+			n.WriteCurrentTermToLog()
 			lastLogIndex, lastLogTerm := n.lastLogIndexAndTerm()
 			if n.LeaderPort != "pending" || (dataPacket.LastLogTerm > lastLogTerm ||
 				(dataPacket.LastLogTerm == lastLogTerm && dataPacket.LastLogIndex >= lastLogIndex)) {
@@ -368,17 +388,6 @@ func (n *Node) handleConnection(c net.Conn) {
 		n.Votes[dataPacket.Port] = true
 		//sending success message to channel if majority votes received
 		if len(n.Votes) > (len(n.Myconnections)+1)/2 {
-			//Writing Current Term To LogFile
-			file, err := os.OpenFile("../logs/log"+n.Name+".txt", os.O_RDWR, 0644)
-			if err != nil {
-				fmt.Println("failed opening file: %s", err)
-			}
-			defer file.Close()
-			data := []byte(strconv.Itoa(n.Term) + "\n")
-			_, err = file.WriteAt(data, 0) // Write at 0 beginning
-			if err != nil {
-				fmt.Println("failed writing Term to file: %s", err)
-			}
 			n.IntializeParams() //Initialize NextIndex[] & MatchIndex[]
 			mychannel <- "You are Leader now"
 		}
@@ -441,7 +450,7 @@ func (n *Node) SendHeartBeat() {
 			enc := gob.NewEncoder(&byteSack)
 			_ = enc.Encode(dataPacket)
 			fmt.Println("Sending Ping to " + peerId)
-
+			c.Write(byteSack.Bytes())
 		}(n.Myconnections[i])
 
 	}
@@ -482,4 +491,17 @@ func contains(s []string, e string) bool {
 		}
 	}
 	return false
+}
+func (n *Node) WriteCurrentTermToLog() {
+	//Writing Current Term To LogFile
+	file, err := os.OpenFile("../logs/log"+n.Name+".txt", os.O_RDWR, 0644)
+	if err != nil {
+		fmt.Println("failed opening file: %s", err)
+	}
+	defer file.Close()
+	data := []byte(strconv.Itoa(n.Term) + "\n")
+	_, err = file.WriteAt(data, 0) // Write at 0 beginning
+	if err != nil {
+		fmt.Println("failed writing Term to file: %s", err)
+	}
 }
