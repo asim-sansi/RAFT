@@ -332,12 +332,15 @@ func (n *Node) handleConnection(c net.Conn) {
 		}
 	} else if dataPacket.Request[0] == "VOTE" { //sent by Candidate Node
 
-		if dataPacket.Term > n.Term {
+		//if dataPacket.Term > n.Term {
+		//	//updating term
+		//	n.Term = dataPacket.Term
+		//	n.MyRole = Follower
+		//}
+		if dataPacket.Term >= n.Term {
 			//updating term
 			n.Term = dataPacket.Term
 			n.MyRole = Follower
-		}
-		if dataPacket.Term == n.Term {
 			lastLogIndex, lastLogTerm := n.lastLogIndexAndTerm()
 			if n.LeaderPort != "pending" || (dataPacket.LastLogTerm > lastLogTerm ||
 				(dataPacket.LastLogTerm == lastLogTerm && dataPacket.LastLogIndex >= lastLogIndex)) {
