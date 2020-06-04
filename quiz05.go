@@ -61,11 +61,16 @@ type Node struct {
 
 // Protocol : Protocol for sent messages
 type Protocol struct {
-	Request      []string   //name of request. Example: RTC => Request to Connect
-	Name         string     //name of node sent in a specific kind of request
-	Server       string     //server of node sent in a specific kind of request
-	Port         string     //port of node sent in a specific kind of request
-	Term         int        //current term
+	Request []string //name of request. Example: RTC => Request to Connect
+	Name    string   //name of node sent in a specific kind of request
+	Server  string   //server of node sent in a specific kind of request
+	Port    string   //port of node sent in a specific kind of request
+	Term    int      //current term
+
+	//For elections to check if the candidate's log is at least as updated as the voter
+	LastLogIndex int
+	LastLogTerm  int
+
 	PrevLogIndex int        //index of log entry immediately preceding new ones
 	LeaderCommit int        //Leaser's commit index
 	PrevLogTerm  int        //term of prevLogIndex entry
@@ -130,6 +135,8 @@ func (n *Node) NodeExecute() {
 			dataPacket.Name = n.Name
 			dataPacket.Server = n.Server
 			dataPacket.Port = n.Port
+			dataPacket.LastLogIndex, dataPacket.LastLogTerm = n.lastLogIndexAndTerm()
+
 			var byteSack bytes.Buffer
 			enc := gob.NewEncoder(&byteSack)
 			_ = enc.Encode(dataPacket)
@@ -304,7 +311,8 @@ func (n *Node) handleConnection(c net.Conn) {
 			}
 		}
 	} else if dataPacket.Request[0] == "VOTE" { //sent by Candidate Node
-		if dataPacket.Term > n.Term {
+
+		if dataPacket.Term > n.Term { //not becoming follower, why ?
 			//updating term
 			n.Term = dataPacket.Term
 			//constructing vote message
@@ -406,6 +414,17 @@ func (n *Node) SendHeartBeat() {
 
 		}(n.Myconnections[i])
 
+	}
+}
+
+// lastLogIndexAndTerm returns the last log index and the last log entry's term
+// (or -1 if there's no log)
+func (n *Node) lastLogIndexAndTerm() (int, int) {
+	if len(n.Log) > 0 {
+		lastIndex := len(n.Log) - 1
+		return lastIndex, n.Log[lastIndex].Term
+	} else {
+		return -1, -1
 	}
 }
 
