@@ -384,7 +384,7 @@ func (n *Node) handleConnection(c net.Conn) {
 		//	n.Term = dataPacket.Term
 		//	n.MyRole = Follower
 		//}
-		if dataPacket.Term > n.Term {
+		if dataPacket.Term >= n.Term {
 			//updating term
 			n.Term = dataPacket.Term
 			n.WriteCurrentTermToLog()

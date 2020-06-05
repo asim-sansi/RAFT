@@ -31,8 +31,12 @@ func main() {
 	file, err := os.Open("../logs/log" + args[0] + ".txt")
 	if err != nil {
 		fmt.Println(err)
-		fmt.Println("Log File unreachable...")
-		return
+		fmt.Println("Log File unreachable, Creating Log File")
+		file, err = os.Create("../logs/log" + args[0] + ".txt")
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 	defer file.Close()
 

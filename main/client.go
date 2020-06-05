@@ -117,8 +117,14 @@ func main() {
 						fmt.Println("        *Invalid Operation, Choose Again")
 					}
 				}
-				fmt.Print("    Enter Value -> ")
-				fmt.Scanln(&value)
+				if operation == "6" {
+					break
+				}
+				if operation != "5" {
+					fmt.Print("    Enter Value -> ")
+					fmt.Scanln(&value)
+				}
+
 				c := ConnnectToNode(port, "localhost")
 				if c == nil {
 					break

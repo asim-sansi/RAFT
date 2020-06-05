@@ -10,22 +10,14 @@ import (
 )
 
 func main() {
-	//err := ioutil.WriteFile("./logs/logA.txt", []byte(strconv.Itoa(7)+"\n"), 0666)
-	//if err != nil {
-	//	fmt.Println(err)
-	//}
-	////Append second line
-	//file, err := os.OpenFile("./logs/logA.txt", os.O_APPEND|os.O_WRONLY, 0644)
-	//if err != nil {
-	//	log.Println(err)
-	//}
-	//defer file.Close()
-	//if _, err := file.WriteString("second line"); err != nil {
-	//	log.Fatal(err)
-	//}
-	file, err := os.Open("./logs/logA.txt")
+
+	file, err := os.Open("./logs/bakwas.txt")
 	if err != nil {
 		fmt.Println(err)
+		file, err = os.Create("./logs/bakwas.txt")
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
 	defer file.Close()
 
