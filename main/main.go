@@ -1,7 +1,7 @@
 package main
 
 import (
-	"../../quiz05"
+	"../../raft"
 	"bufio"
 	"fmt"
 	"log"
@@ -36,7 +36,7 @@ func main() {
 	}
 	defer file.Close()
 
-	var FileLog []quiz05.LogEntry
+	var FileLog []raft.LogEntry
 	FileTerm := 0
 	scanner := bufio.NewScanner(file)
 	scanner.Scan()
@@ -62,7 +62,7 @@ func main() {
 				fmt.Println("Error at Parsing Log Entry Delta To Integer")
 				return
 			}
-			FileLog = append(FileLog, quiz05.LogEntry{Term: EntryTerm, Operation: entry[1], Value: EntryValue})
+			FileLog = append(FileLog, raft.LogEntry{Term: EntryTerm, Operation: entry[1], Value: EntryValue})
 		} else {
 			fmt.Println("Invalid Log Entry In Log File, quitting [Check The Logs]")
 			return
@@ -70,7 +70,7 @@ func main() {
 	}
 
 	rand.Seed(time.Now().UnixNano())
-	myNode := quiz05.Node{args[0], "localhost", args[1], args[2:], "xxxx", quiz05.Follower, FileTerm, nil,
+	myNode := raft.Node{args[0], "localhost", args[1], args[2:], "xxxx", raft.Follower, FileTerm, nil,
 		FileLog, -1, -1, nil, nil}
 	fmt.Println("Successfully created node with Log ")
 	fmt.Println(FileLog)
