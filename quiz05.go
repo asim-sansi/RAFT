@@ -90,6 +90,29 @@ func (n *Node) ConnnectToNode(Port string) net.Conn {
 	}
 	return conn
 }
+func (n *Node) updateStateMachine() {
+	temp := n.LastApplied
+	for n.LastApplied < n.CommitIndex {
+		n.LastApplied += 1
+		command := n.Log[n.LastApplied]
+		switch command.Operation {
+		case "+":
+			Variable += command.Value
+		case "-":
+			Variable -= command.Value
+		case "*":
+			Variable *= command.Value
+		case "=":
+			Variable = command.Value
+		default:
+			fmt.Println("Invalid Operation In Log Entry")
+		}
+	}
+	if n.LastApplied > temp {
+		fmt.Print("LastApplied Now is ")
+		fmt.Println(n.LastApplied)
+	}
+}
 
 // NodeExecute : waits for user input
 func (n *Node) NodeExecute() {
@@ -98,6 +121,7 @@ func (n *Node) NodeExecute() {
 
 	//starting node main loop
 	for true {
+		n.updateStateMachine()
 		switch n.MyRole { //executes current role of node. Initial is always follower
 		case Follower:
 			fmt.Println("I am Follower " + n.Name + " Now")
@@ -136,7 +160,7 @@ func (n *Node) NodeExecute() {
 			dataPacket.Name = n.Name
 			dataPacket.Server = n.Server
 			dataPacket.Port = n.Port
-			dataPacket.LastLogIndex, dataPacket.LastLogTerm = n.lastLogIndexAndTerm()
+			dataPacket.LastLogIndex, dataPacket.LastLogTerm = n.getLastLogIndexAndTerm()
 
 			var byteSack bytes.Buffer
 			enc := gob.NewEncoder(&byteSack)
@@ -218,16 +242,21 @@ func (n *Node) handleConnection(c net.Conn) {
 			c.Write([]byte("Contact Leader On This Port -> " + n.LeaderPort))
 			return
 		}
+		//GET operation is not maintained in the logs since read can't cause log inconsistencies
+		if dataPacket.Operation == "GET" {
+			c.Write([]byte("Value Of The State Machine is " + strconv.Itoa(Variable)))
+			return
+		}
 		//Append Log To Log File
 		file, err := os.OpenFile("../logs/log"+n.Name+".txt", os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Println(err)
 		}
 		defer file.Close()
-		if _, err := file.WriteString(strconv.Itoa(n.Term) + " " + dataPacket.Operation + " " + strconv.Itoa(dataPacket.Value) + "\n"); err != nil {
+		if _, err := file.WriteString(strconv.Itoa(n.Term) + "," + dataPacket.Operation + "," + strconv.Itoa(dataPacket.Value) + "\n"); err != nil {
 			log.Fatal(err)
 		}
-		c.Write([]byte("Log Updated, Wait For Sync & Response"))
+		c.Write([]byte("Log Updated, Replicating Log Now.."))
 		n.Log = append(n.Log, LogEntry{Term: n.Term, Operation: dataPacket.Operation, Value: dataPacket.Value})
 		fmt.Print("** Current Log is -> ")
 		fmt.Println(n.Log)
@@ -262,6 +291,9 @@ func (n *Node) handleConnection(c net.Conn) {
 			logInsertIndex := dataPacket.PrevLogIndex + 1
 			newEntriesIndex := 0
 
+			//to point logInsertIndex and newEntriesIndex to Either the end of log and datapacket.Entries
+			//or to point lofinsrtIndex to the index where this server's log entry and leader entry at an index missmacthes
+			//and to point newEntriesIndex to the index where term mismatches the log entry
 			for {
 				if logInsertIndex >= len(n.Log) || newEntriesIndex >= len(dataPacket.Entries) {
 					break
@@ -272,13 +304,8 @@ func (n *Node) handleConnection(c net.Conn) {
 				logInsertIndex++
 				newEntriesIndex++
 			}
-			// At the end of this loop:
-			// - logInsertIndex points at the end of the log, or an index where the
-			//   term mismatches with an entry from the leader
-			// - newEntriesIndex points at the end of Entries, or an index where the
-			//   term mismatches with the corresponding log entry
 			if newEntriesIndex < len(dataPacket.Entries) {
-				fmt.Print("*** inserting entries from index " + strconv.Itoa(logInsertIndex))
+				fmt.Println("*** inserting entries from index " + strconv.Itoa(logInsertIndex))
 				fmt.Println(dataPacket.Entries[newEntriesIndex:])
 				// Writing Log Entries in Log File
 				//Append Log To Log File
@@ -288,7 +315,7 @@ func (n *Node) handleConnection(c net.Conn) {
 				}
 				defer file.Close()
 				for _, entry := range dataPacket.Entries[newEntriesIndex:] {
-					if _, err := file.WriteString(strconv.Itoa(entry.Term) + " " + entry.Operation + " " + strconv.Itoa(entry.Value) + "\n"); err != nil {
+					if _, err := file.WriteString(strconv.Itoa(entry.Term) + "," + entry.Operation + "," + strconv.Itoa(entry.Value) + "\n"); err != nil {
 						log.Fatal(err)
 					}
 				}
@@ -361,7 +388,7 @@ func (n *Node) handleConnection(c net.Conn) {
 			//updating term
 			n.Term = dataPacket.Term
 			n.WriteCurrentTermToLog()
-			lastLogIndex, lastLogTerm := n.lastLogIndexAndTerm()
+			lastLogIndex, lastLogTerm := n.getLastLogIndexAndTerm()
 			if n.LeaderPort != "pending" || (dataPacket.LastLogTerm > lastLogTerm ||
 				(dataPacket.LastLogTerm == lastLogTerm && dataPacket.LastLogIndex >= lastLogIndex)) {
 				//constructing vote message
@@ -458,7 +485,7 @@ func (n *Node) SendHeartBeat() {
 
 // lastLogIndexAndTerm returns the last log index and the last log entry's term
 // (or -1 if there's no log)
-func (n *Node) lastLogIndexAndTerm() (int, int) {
+func (n *Node) getLastLogIndexAndTerm() (int, int) {
 	if len(n.Log) > 0 {
 		lastIndex := len(n.Log) - 1
 		return lastIndex, n.Log[lastIndex].Term

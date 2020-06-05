@@ -79,13 +79,43 @@ func main() {
 			fmt.Print("    Enter port -> ")
 			var port string
 			fmt.Scanln(&port)
-			operation := ""
+			var operation string
 			var value int
-			for operation != "exit" {
-				fmt.Print("    Enter Operation -> ")
-				fmt.Scanln(&operation)
-				if operation == "exit" {
-					break
+			for operation != "EXIT" {
+				operation = "INVALID"
+				for operation == "INVALID" {
+					fmt.Println("    Choose An Operation By Entering Corresponding Menu Number")
+					fmt.Println("    	1. Addition[+]")
+					fmt.Println("    	2. Subtraction[-]")
+					fmt.Println("    	3. Multiplication[*]")
+					fmt.Println("    	4. Assignment[=]")
+					fmt.Println("    	5. Get State Machine Value")
+					fmt.Println("    	6. Exit")
+					fmt.Print("    Enter Operation -> ")
+					fmt.Scanln(&operation)
+					switch operation {
+					case "1":
+						operation = "+"
+						break
+					case "2":
+						operation = "-"
+						break
+					case "3":
+						operation = "*"
+						break
+					case "4":
+						operation = "="
+						break
+					case "5":
+						operation = "GET"
+						break
+					case "6":
+						operation = "EXIT"
+						break
+					default:
+						operation = "INVALID"
+						fmt.Println("        *Invalid Operation, Choose Again")
+					}
 				}
 				fmt.Print("    Enter Value -> ")
 				fmt.Scanln(&value)
