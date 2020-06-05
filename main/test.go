@@ -1,7 +1,7 @@
 package main
 
 import (
-	"../../quiz05"
+	"../../raft"
 	"bufio"
 	"fmt"
 	"os"
@@ -29,7 +29,7 @@ func main() {
 	}
 	defer file.Close()
 
-	var FileLog []quiz05.LogEntry
+	var FileLog []raft.LogEntry
 	FileTerm := 0
 	scanner := bufio.NewScanner(file)
 	scanner.Scan()
@@ -55,7 +55,7 @@ func main() {
 				fmt.Println("Error at Parsing Log Entry Delta To Integer")
 				return
 			}
-			FileLog = append(FileLog, quiz05.LogEntry{Term: EntryTerm, Operation: entry[1], Value: EntryValue})
+			FileLog = append(FileLog, raft.LogEntry{Term: EntryTerm, Operation: entry[1], Value: EntryValue})
 		} else {
 			fmt.Println("Invalid Log Entry In Log File, quitting [Check The Logs]")
 			return
